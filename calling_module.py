@@ -65,7 +65,7 @@ Smart_To_Do_Organizer_format = {
                         },
                         "deadline": {
                             "type": ["string", "null"],
-                            "description": "The deadline for the task in absolute ISO 8601 format (YYYY-MM-DD), or null if none.",
+                            "description": "The deadline for the task in absolute ISO 8601 format (DD-MM-YY), or null if none.",
                         },
                         "category": {
                             "type": "string",
