@@ -1,7 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, RateLimitError, APIError, AuthenticationError, NotFoundError
 
 
 load_dotenv(override=True)
@@ -100,3 +100,46 @@ USER_PROMPT = f"""Extract all actionable tasks from the following text according
 TEXT START
 {raw_input_text.strip()}
 TEXT END"""
+
+
+def handle_ai_error(error: Exception) -> dict:
+    if isinstance(error, RateLimitError):
+        error_type = "rate_limit"
+        ui_message = "We're receiving a high volume of requests right now. Please wait a few seconds and try again."
+    elif isinstance(error, AuthenticationError):
+        error_type = "authentication_error"
+        ui_message = "Authentication issue encountered. Please verify your API key or account settings."
+    elif isinstance(error, NotFoundError):
+        error_type = "model_not_found"
+        ui_message = "The requested AI model is currently unavailable. Please check your configuration."
+    elif isinstance(error, json.JSONDecodeError):
+        error_type = "invalid_json"
+        ui_message = "The model generated a malformed response. Please retry with your text."
+    elif isinstance(error, APIError):
+        error_type = "api_error"
+        ui_message = "The AI service is experiencing a brief hiccup. Please try submitting again in a moment."
+    else:
+        error_type = "unknown_error"
+        ui_message = "Something unexpected occurred. Please try again shortly."
+
+    result = {"error": error_type, "message": ui_message, "detail": str(error)}
+    print(f"Error: {result}")
+    return result
+
+
+
+def ask_extraction_specialist():
+    try:
+        response = groq_ai.responses.create(
+            model = 'qwen/qwen3.8-27b',
+            instructions = SYSTEM_PROMPT_MODEL_1,
+            input = USER_PROMPT,
+            text={'format': Model_1_Extraction_Schema}
+        )
+
+        results = json.loads(response.output_text)
+        return results
+    except json.JSONDecodeError as e:
+        return handle_ai_error(e)
+    except Exception as e:
+        return handle_ai_error(e)
