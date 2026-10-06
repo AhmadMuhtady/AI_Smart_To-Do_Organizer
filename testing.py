@@ -3,11 +3,13 @@ import time
 from text_validation import text_validation
 from Task_extraction_specialist import task_extraction_specialist
 from Task_classification_specialist import task_classification_specialist
+from Task_validation_repair_specialist import (
+    validate_and_repair_tasks,
+    apply_validation_patches,
+)
 
-# Configurable pause in seconds between model API calls
-MODEL_CALL_DELAY_SECONDS = 3
+MODEL_CALL_DELAY_SECONDS = 2
 
-# 1. RAW TEST INPUT (20 Actionable Tasks Total)
 raw_input_text = """
 Buy milk from the store today.
 I need to finish my history essay by Friday and also pick up my dry cleaning tomorrow.
@@ -31,39 +33,105 @@ Started cleaning my room.
 Pay parking ticket in 15 minutes or receive a penalty.
 """
 
-
-def run_test_pipeline():
-    # Step 0: Raw Input
-    print("=" * 60)
-    print("STEP 0: RAW INPUT")
-    print("=" * 60)
-    print(raw_input_text.strip())
-
-    # Step 1: Input Validation
+def run_pipeline_test():
+    print("=" * 80)
+    print("STAGE 0: INPUT TEXT VALIDATION")
+    print("=" * 80)
     clean_text = text_validation(raw_input_text)
+    print("Input validated successfully.\n")
 
-    # Step 2: Model 1 (Task Extraction)
-    print("\n" + "=" * 60)
-    print("STEP 1: MODEL 1 RETURN (RAW EXTRACTION)")
-    print("=" * 60)
+    # -------------------------------------------------------------
+    # STAGE 1: MODEL 1 (Task Extraction)
+    # -------------------------------------------------------------
+    print("=" * 80)
+    print("STAGE 1: MODEL 1 (RAW EXTRACTION SPECIALIST)")
+    print("=" * 80)
     model_1_output = task_extraction_specialist(clean_text)
+    
+    # Print raw output first so errors are visible immediately
     print(json.dumps(model_1_output, indent=2))
+    
+    if "error" in model_1_output:
+        raise RuntimeError(f"Model 1 API failed: {model_1_output.get('detail', model_1_output)}")
 
-    # Wait before calling Model 2
-    print("\n" + "-" * 60)
-    print(f"Waiting {MODEL_CALL_DELAY_SECONDS} seconds before calling Model 2...")
-    print("-" * 60)
+    m1_tasks = model_1_output.get("tasks", [])
+    print(f"\nModel 1 extracted: {len(m1_tasks)} tasks (Expected: 20)")
+    assert len(m1_tasks) == 20, f"Model 1 failed extraction! Got {len(m1_tasks)}, expected 20."
+
+    print(f"\nWaiting {MODEL_CALL_DELAY_SECONDS}s before calling Model 2...")
     time.sleep(MODEL_CALL_DELAY_SECONDS)
 
-    # Step 3: Model 2 (Normalization & Classification)
-    print("\n" + "=" * 60)
-    print("STEP 2: MODEL 2 RETURN (NORMALIZATION & CLASSIFICATION)")
-    print("=" * 60)
+    # -------------------------------------------------------------
+    # STAGE 2: MODEL 2 (Normalization & Classification)
+    # -------------------------------------------------------------
+    print("\n" + "=" * 80)
+    print("STAGE 2: MODEL 2 (NORMALIZATION & CLASSIFICATION SPECIALIST)")
+    print("=" * 80)
     model_2_output = task_classification_specialist(model_1_output)
     print(json.dumps(model_2_output, indent=2))
+    
+    if "error" in model_2_output:
+        raise RuntimeError(f"Model 2 API failed: {model_2_output.get('detail', model_2_output)}")
 
-    return model_1_output, model_2_output
+    m2_tasks = model_2_output.get("tasks", [])
+    print(f"\nModel 2 classified: {len(m2_tasks)} tasks (Expected: 20)")
+    assert len(m2_tasks) == len(m1_tasks), (
+        f"Cardinality mismatch! Model 1 had {len(m1_tasks)}, but Model 2 produced {len(m2_tasks)}."
+    )
 
+    print(f"\nWaiting {MODEL_CALL_DELAY_SECONDS}s before calling Model 3...")
+    time.sleep(MODEL_CALL_DELAY_SECONDS)
+
+    # -------------------------------------------------------------
+    # STAGE 3: MODEL 3 (Audit & Validation)
+    # -------------------------------------------------------------
+    print("\n" + "=" * 80)
+    print("STAGE 3: MODEL 3 (FINAL VALIDATION & FIELD AUDIT)")
+    print("=" * 80)
+    audit_report = validate_and_repair_tasks(
+        clean_text, model_1_output, model_2_output
+    )
+    print(json.dumps(audit_report, indent=2))
+    
+    if "error" in audit_report:
+        raise RuntimeError(f"Model 3 API failed: {audit_report.get('detail', audit_report)}")
+
+    # -------------------------------------------------------------
+    # STAGE 4: DETERMINISTIC RUNTIME PATCH APPLICATION
+    # -------------------------------------------------------------
+    print("\n" + "=" * 80)
+    print("STAGE 4: FINAL DATASET INTEGRATION")
+    print("=" * 80)
+    final_output = apply_validation_patches(model_2_output, audit_report)
+    final_tasks = final_output.get("tasks", [])
+    print(f"Final validated tasks count: {len(final_tasks)}")
+    print(json.dumps(final_output, indent=2))
+
+    # -------------------------------------------------------------
+    # FINAL SANITY ASSERTIONS
+    # -------------------------------------------------------------
+
+    print("\n" + "=" * 80)
+    print("STAGE 5: VERIFICATION SUMMARY")
+    print("=" * 80)
+    issues_found = audit_report.get("issues_found", -1)
+    corrections = audit_report.get("corrections", [])
+
+    print(f"Issues Repaired by Model 3: {issues_found}")
+    print(f"Final Task Count:           {len(final_tasks)} (Expected: 20)")
+
+    # Assert structural integrity
+    assert len(final_tasks) == 20, f"Task count mismatch! Got {len(final_tasks)}"
+
+    # Assert that Model 3 successfully caught and patched the sub-day timing
+    task_3 = final_tasks[3]   # Quarterly report
+    task_19 = final_tasks[19] # Parking ticket
+    
+    assert task_3["description"] == "afternoon", f"Task 3 missing afternoon: {task_3}"
+    assert "15 minutes" in (task_19["description"] or ""), f"Task 19 missing 15 minutes: {task_19}"
+
+    print("\n🎉 ALL PIPELINE INTEGRATION CHECKS PASSED: Extraction, Normalization, and Repair are 100% verified.")
+    return final_output
 
 if __name__ == "__main__":
-    run_test_pipeline()
+    run_pipeline_test()
