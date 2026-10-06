@@ -3,11 +3,9 @@ import json
 from dotenv import load_dotenv
 from openai import OpenAI, RateLimitError, APIError, AuthenticationError, NotFoundError
 
-
 load_dotenv(override=True)
-groq_ai_key = os.getenv('GROQAI_API_KEY')
+groq_ai_key = os.getenv("GROQAI_API_KEY")
 groq_ai = OpenAI(api_key=groq_ai_key, base_url="https://api.groq.com/openai/v1")
-
 
 SYSTEM_PROMPT_MODEL_1 = """You are Model 1: Task Extraction Specialist. 
 Your ONLY job is to extract actionable tasks from the user's text and map them to the provided JSON schema. 
@@ -33,7 +31,6 @@ You do NOT classify priority, you do NOT assign categories, you do NOT normalize
 
 Do not invent missing information. If a detail is missing in the user's text, output `null` for that field."""
 
-
 Model_1_Extraction_Schema = {
     "type": "json_schema",
     "name": "Task_Extraction",
@@ -57,21 +54,16 @@ Model_1_Extraction_Schema = {
                         },
                         "time_expression": {
                             "type": ["string", "null"],
-                            "description": "The EXACT time phrase used by the user (e.g., 'tomorrow', 'Friday', 'in 10 minutes', 'yesterday'). Do not normalize to dates.",
+                            "description": "The EXACT time phrase used by the user. Do not normalize to dates.",
                         },
                         "state_expression": {
                             "type": ["string", "null"],
-                            "description": "The EXACT phrase indicating the state or progress (e.g., 'already finished', 'started working', 'need to').",
+                            "description": "The EXACT phrase indicating the state or progress.",
                         },
                     },
-                    "required": [
-                        "task_text", 
-                        "context", 
-                        "time_expression", 
-                        "state_expression"
-                    ],
+                    "required": ["task_text", "context", "time_expression", "state_expression"],
                     "additionalProperties": False,
-                }
+                },
             }
         },
         "required": ["tasks"],
@@ -79,67 +71,41 @@ Model_1_Extraction_Schema = {
     },
 }
 
-
-
-raw_input_text = """
-Buy milk from the store today.
-I need to finish my history essay by Friday and also pick up my dry cleaning tomorrow.
-Submit the quarterly report tomorrow afternoon.
-Sometime soon I should probably organize my garage.
-Take the car to the mechanic for an oil change.
-Pay the electricity bill right now or they will shut off power in 10 minutes!
-I already finished filing my taxes yesterday.
-I've started working on the slide deck for the client meeting.
-Man, what a crazy weekend. The weather was amazing.
-Oh wait, remind me to cancel that subscription whenever I get a chance, but actually do it later this month maybe, well whatever.
-"""
-
-
-USER_PROMPT = f"""Extract all actionable tasks from the following text according to your system instructions:
-
-TEXT START
-{raw_input_text.strip()}
-TEXT END"""
-
-
 def handle_ai_error(error: Exception) -> dict:
     if isinstance(error, RateLimitError):
         error_type = "rate_limit"
-        ui_message = "We're receiving a high volume of requests right now. Please wait a few seconds and try again."
+        ui_message = "Rate limit reached. Please wait a few seconds and try again."
     elif isinstance(error, AuthenticationError):
         error_type = "authentication_error"
-        ui_message = "Authentication issue encountered. Please verify your API key or account settings."
+        ui_message = "Authentication issue encountered. Please verify your API key."
     elif isinstance(error, NotFoundError):
         error_type = "model_not_found"
-        ui_message = "The requested AI model is currently unavailable. Please check your configuration."
+        ui_message = "The requested AI model is unavailable."
     elif isinstance(error, json.JSONDecodeError):
         error_type = "invalid_json"
-        ui_message = "The model generated a malformed response. Please retry with your text."
+        ui_message = "The model generated a malformed response."
     elif isinstance(error, APIError):
         error_type = "api_error"
-        ui_message = "The AI service is experiencing a brief hiccup. Please try submitting again in a moment."
+        ui_message = "The AI service experienced an error."
     else:
         error_type = "unknown_error"
-        ui_message = "Something unexpected occurred. Please try again shortly."
+        ui_message = "Something unexpected occurred."
 
-    result = {"error": error_type, "message": ui_message, "detail": str(error)}
-    print(f"Error: {result}")
-    return result
+    return {"error": error_type, "message": ui_message, "detail": str(error)}
 
+def task_extraction_specialist(clean_text: str):
+    user_prompt = f"""Extract all actionable tasks from the following text according to your system instructions:
 
-
-def ask_extraction_specialist():
+TEXT START
+{clean_text}
+TEXT END"""
     try:
         response = groq_ai.responses.create(
-            model = 'qwen/qwen3.8-27b',
-            instructions = SYSTEM_PROMPT_MODEL_1,
-            input = USER_PROMPT,
-            text={'format': Model_1_Extraction_Schema}
+            model="qwen/qwen3.8-27b",
+            instructions=SYSTEM_PROMPT_MODEL_1,
+            input=user_prompt,
+            text={"format": Model_1_Extraction_Schema},
         )
-
-        results = json.loads(response.output_text)
-        return results
-    except json.JSONDecodeError as e:
-        return handle_ai_error(e)
+        return json.loads(response.output_text)
     except Exception as e:
         return handle_ai_error(e)
