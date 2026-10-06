@@ -29,8 +29,12 @@ Current Reference Date: {weekday_name}, {formatted_date}.
    - Format as a clean, concise, grammatically correct verb phrase.
    - Retain original intent without adding unstated facts.
 
-3. Description (Preserve Useful Context & Consequences):
-   - ALWAYS preserve meaningful context: purpose, reasons, locations, specific stakes, penalties, or sub-day timing details that do NOT fit into a calendar date (e.g., "from the store", "for an oil change", "for the client meeting", "for CEO meeting", "afternoon", "or they will shut off power in 10 minutes", "or receive a penalty").
+3. Description (Preserve Useful Context, Consequences & Bounded Windows):
+   - ALWAYS preserve meaningful context: purpose, reasons, locations, specific stakes, penalties, or sub-day timing details that do NOT fit into a calendar date (e.g., "from the store", "for an oil change", "for the client meeting", "for CEO meeting", "afternoon", "before lunch", "or they will shut off power in 10 minutes", "or receive a penalty").
+   - Bounded Planning Windows (MANDATORY TO PRESERVE): If `time_expression` identifies a meaningful planning window but cannot produce one exact calendar date, set `deadline: null` and PRESERVE that timing in `description`:
+     * "next week" -> `deadline: null`, `description: "next week"`
+     * "sometime next week" -> `deadline: null`, `description: "sometime next week"`
+     * "this weekend" -> `deadline: null`, `description: "this weekend"`
    - If the extracted context contains useful information not already represented by the title or deadline, PRESERVE IT in `description`.
    - Remove ONLY details that merely duplicate what is already expressed by the title or the normalized calendar deadline (e.g., omit words like "today" or "tomorrow" if the deadline field captures them).
    - If there is genuinely zero extra context beyond the title and calendar deadline, output null.
@@ -41,7 +45,8 @@ Current Reference Date: {weekday_name}, {formatted_date}.
    - Medium (Standard Responsibilities): normal, concrete responsibilities, routine tasks, assignments, essays, chores, or errands ("buy milk today", "pick up dry cleaning tomorrow", "call dentist", "finish history essay by Friday", "submit assignment next Friday", "presentation for regular meeting").
      * Firm Rule: A calendar deadline alone does NOT automatically elevate a normal responsibility or standard school/work deliverable to High. Standard coursework (assignments, essays) and standard work tasks remain Medium by default unless explicit high-stakes factors exist.
    - High: significant importance with explicit high stakes, executive/major-client visibility, or major examinations ("presentation for CEO meeting tomorrow", "study for final exam", "quarterly executive financial filing", "critical client deliverable").
-   - Urgent: requires immediate action AND carries an immediate severe penalty/failure within hours or minutes ("pay bill right now or power cuts in 10 minutes", "pay parking ticket in 15 minutes or receive penalty"). A nearby standard deadline alone is NEVER Urgent.
+   - Urgent: requires immediate action AND carries an immediate severe penalty/failure within hours or minutes ("pay bill right now or power cuts in 10 minutes", "pay parking ticket in 15 minutes or receive penalty", "pay electricity bill right now or power will be cut tonight"). A nearby standard deadline alone is NEVER Urgent.
+     * Note: If Model 1 provides a power-cut consequence, penalty, or immediate stake in `context`, you MUST preserve it in `description`.
 
 5. Deadline & Calendar Verification:
    - Output format: DD-MM-YYYY or null.
@@ -51,12 +56,13 @@ Current Reference Date: {weekday_name}, {formatted_date}.
      * Unqualified weekday (e.g., "Friday") or "this Friday" -> the nearest upcoming occurrence of that day.
      * "next Friday" -> the Friday of the following week (7 days after the nearest Friday).
      * MANDATORY INTERNAL CHECK: Before finalizing a date, confirm that the DD-MM-YYYY date mathematically falls on the requested weekday relative to {weekday_name} {formatted_date}.
+   - Multi-day bounded windows ("next week", "this weekend") -> null (preserved in description).
    - Vague timing ("sometime", "later this month maybe") -> null.
    - Past completed history ("yesterday", "last week") -> null.
 
 6. Category:
    - Select from: Work, Study, Personal, Shopping, Health, Finance, General.
-   - Purpose beats shallow keywords (e.g., buying a textbook is Study, buying groceries is Shopping, dentist appointment is Health). Use General only when nothing else fits.
+   - Purpose beats shallow keywords (e.g., buying a textbook is Study, buying groceries is Shopping, dentist appointment is Health, cinema/grooming/hair is Personal). Use General only when nothing else fits.
 
 7. Status:
    - Base ONLY on `state_expression`.
@@ -156,7 +162,6 @@ def task_classification_specialist(model_1_output: dict) -> dict:
     input_tasks = model_1_output["tasks"]
     expected_count = len(input_tasks)
 
-
     max_retries = 1
     for attempt in range(max_retries + 1):
         try:
@@ -187,7 +192,6 @@ def task_classification_specialist(model_1_output: dict) -> dict:
             else:
                 return handle_ai_error(e)
 
-
     try:
         chunk_size = 10
         merged_tasks = []
@@ -200,7 +204,6 @@ def task_classification_specialist(model_1_output: dict) -> dict:
             chunk_result = _call_model_2_api(chunk)
             chunk_output_tasks = chunk_result.get("tasks", [])
             
-
             if len(chunk_output_tasks) != len(chunk):
                 print(f"[Model 2 Fallback] Chunk {chunk_num} dropped tasks (expected {len(chunk)}, got {len(chunk_output_tasks)}). Retrying chunk once...")
                 time.sleep(1.5)
