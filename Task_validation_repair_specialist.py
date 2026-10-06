@@ -63,10 +63,17 @@ Do NOT rewrite valid fields. Do NOT invent new descriptions. Do NOT add, delete,
    - If candidate `deadline == trusted_deadline`: LEAVE IT ALONE.
    - If candidate `deadline != trusted_deadline`: Emit a repair setting `new_value: trusted_deadline`.
 
-2. Description & Timing Rules (ANTI-REDUNDANCY):
-   - Timing already represented by a calendar date (e.g., "today", "tomorrow", "Friday", "next Friday", "yesterday") MUST NOT be in `description`. If `description` is null for these, THAT IS CORRECT. Leave it null.
-   - Timing that a date CANNOT represent (e.g., "afternoon", "at 14:30", "in 15 minutes", "right now", "before lunch") MUST be preserved in `description`. If missing, emit an `update_field` repair.
-   - Genuine consequences, penalties, or stakes ("or they will shut off power in 10 minutes", "or receive a penalty", "for an oil change") MUST be preserved in `description`.
+2. Description & Timing Policy:
+   - Specific Sub-Day Timing (MANDATORY TO PRESERVE):
+     Phrases specifying an exact time of day or interval (e.g., "afternoon", "in 15 minutes", "at 3 PM", "right now", "before noon") MUST be preserved in `description`.
+     * Example: "tomorrow afternoon" -> deadline handles tomorrow, but "afternoon" must be in `description`.
+     * Example: "in 15 minutes or receive a penalty" -> both the 15 minutes and penalty must be in `description`.
+   - Vague Scheduling Language (DO NOT PUT IN DESCRIPTION):
+     Vague timing phrases such as "sometime soon", "later this month maybe", "sometime next month", "whenever", or "sometime" DO NOT belong in `description`. If `description` is null for these, THAT IS CORRECT. Do NOT patch vague phrases into `description`.
+   - Standard Calendar Deadlines:
+     Words like "today", "tomorrow", "Friday", or "yesterday" captured by deadline must NOT be in `description`.
+   - Context & Stakes:
+     Genuine consequences, penalties, or stakes ("or they will shut off power in 10 minutes", "for an oil change") MUST be preserved in `description`.
 
 3. Hallucination Removal:
    - Clear any details in `description` or `title` that have zero basis in Model 1 or raw text (set `new_value: null`).
@@ -173,7 +180,6 @@ def validate_and_repair_tasks(raw_text: str, model_1_output: dict, model_2_outpu
     m1_tasks = model_1_output.get("tasks", [])
     m2_tasks = model_2_output.get("tasks", [])
 
-    # Python Cardinality Pre-Check
     if len(m1_tasks) != len(m2_tasks):
         return {
             "error": "cardinality_mismatch",
@@ -193,15 +199,15 @@ def validate_and_repair_tasks(raw_text: str, model_1_output: dict, model_2_outpu
         "model_2_candidates": m2_tasks
     }
 
-    user_prompt = f"""Audit the candidate tasks against source inputs and Python pre-computed trusted deadlines.
+    user_prompt = f"""Audit candidate tasks against source inputs and Python pre-computed trusted deadlines.
 Only flag unambiguous defects:
 - Deadlines that do NOT match trusted_deadline
-- Missing sub-day timing that a date cannot represent (e.g. 'in 15 minutes', 'afternoon')
-- Missing consequences/penalties
+- Missing specific sub-day timing that a date cannot represent (e.g. 'in 15 minutes', 'afternoon')
+- Missing consequences, locations, or penalties
 - Hallucinated details
 - Incorrect status or category
 
-Do NOT add dates like 'today', 'tomorrow', or 'Friday' back into descriptions if the deadline captures them.
+Do NOT add vague timing phrases ('sometime soon', 'later this month maybe', 'sometime next month') into descriptions. Leaving description null for vague items is correct.
 
 INPUT DATA:
 {json.dumps(user_payload, indent=2)}"""
