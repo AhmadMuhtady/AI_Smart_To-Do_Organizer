@@ -1,60 +1,61 @@
 import os
 import json
+from datetime import date
 from dotenv import load_dotenv
 from openai import OpenAI, RateLimitError, APIError, AuthenticationError, NotFoundError
-from Task_classification_specialist import Task_
-
 
 load_dotenv(override=True)
-groq_ai_key = os.getenv('GROQAI_API_KEY')
+groq_ai_key = os.getenv("GROQAI_API_KEY")
 groq_ai = OpenAI(api_key=groq_ai_key, base_url="https://api.groq.com/openai/v1")
-
-from datetime import date
 
 today = date.today()
 formatted_date = today.strftime("%d-%m-%Y")
+weekday_name = today.strftime("%A")
 
 SYSTEM_PROMPT_MODEL_2 = f"""You are Model 2: Task Normalization & Classification Specialist.
-Your input is a raw JSON array of extracted tasks. Your job is to analyze the raw fields (`task_text`, `context`, `time_expression`, `state_expression`) and generate a finalized, normalized task list.
+Your input is a raw JSON payload containing extracted tasks. Your job is to normalize and classify each item into a finalized structure.
 
-Current Reference Date: {formatted_date} (Use this to resolve relative dates).
+Current Reference Date: {weekday_name}, {formatted_date}.
 
 ### Normalization & Classification Rules:
 
 1. Title:
-   - Make it short and clean. Keep the original meaning.
-   - Fix awkward wording/spacing. Formulate as a clean verb phrase.
-   - Do NOT invent extra details.
+   - Format as a clean, concise, grammatically correct verb phrase.
+   - Retain original intent without adding unstated facts.
 
-2. Description:
-   - Preserve useful extra context from the raw input.
-   - Preserve time details that cannot fit in a date field (e.g., "afternoon", "in 10 minutes").
-   - Do NOT simply repeat the title. Use `null` if there is no useful extra information.
+2. Description (Anti-Duplication Rule):
+   - Only preserve context or specific timing details that CANNOT fit into a calendar date (e.g., "14:30", "afternoon", "in 10 minutes or fail").
+   - Do NOT duplicate relative dates that are already captured by the deadline field (e.g., do not keep "tomorrow" if deadline is set to tomorrow's date).
+   - If there is no extra context beyond what is captured by title and deadline, output null.
 
-3. Priority:
-   - Low: optional / vague / non-important.
-   - Medium: normal responsibility.
-   - High: important + firm deadline or high consequence.
-   - Urgent: immediate action or severe/immediate consequence. A nearby deadline alone should NOT automatically mean Urgent.
+3. Priority (Independent of Status):
+   - Priority reflects the importance and consequence of the task itself, COMPLETELY INDEPENDENT of status. A completed tax return or completed critical project retains its true priority (e.g., Medium or High), NEVER Low simply because it is done.
+   - Low: purely optional, discretionary, casual, or vague items easily postponed without real consequence ("organize garage sometime", "cancel subscription whenever").
+   - Medium: ordinary concrete responsibilities, routine appointments, chores, or errands expected to actually be done ("buy milk today", "pick up dry cleaning tomorrow", "call dentist").
+   - High: significant importance with firm deadlines or meaningful stakes/consequences ("study for final exam", "quarterly executive deliverable").
+   - Urgent: immediate action needed or immediate severe penalty within hours/minutes ("pay bill right now or power cuts in 10 minutes", "submit in 5 minutes or fail course"). A nearby deadline alone is NOT Urgent.
 
-4. Deadline (Format as DD-MM-YYYY):
-   - today / immediate timing (right now, in 10 minutes) → current date ({formatted_date}).
-   - tomorrow → next calendar day.
-   - weekday (e.g., "Friday") / "this Friday" → nearest upcoming occurrence of that weekday.
-   - "next Friday" → Friday of the following week.
-   - vague timing (sometime, later) → `null`.
-   - past timing describing completed history (e.g., "yesterday") → `null`.
+4. Deadline & Calendar Verification:
+   - Output format: DD-MM-YYYY or null.
+   - "today" / immediate timing -> current date ({formatted_date}).
+   - "tomorrow" -> next calendar day.
+   - Weekday Resolution Rule:
+     * Unqualified weekday (e.g., "Friday") or "this Friday" -> the nearest upcoming occurrence of that day.
+     * "next Friday" -> the Friday of the following week (7 days after the nearest Friday).
+     * MANDATORY INTERNAL CHECK: Before finalizing a date, confirm that the DD-MM-YYYY date mathematically falls on the requested weekday relative to {weekday_name} {formatted_date}.
+   - Vague timing ("sometime", "later this month maybe") -> null.
+   - Past completed history ("yesterday", "last week") -> null.
 
 5. Category:
-   - Choose ONE: Work, Study, Personal, Shopping, Health, Finance, General.
-   - Base your choice on the task’s underlying purpose, not just shallow keywords. Use General if nothing else fits cleanly.
+   - Select from: Work, Study, Personal, Shopping, Health, Finance, General.
+   - Purpose beats shallow keywords (e.g., buying a textbook is Study, buying groceries is Shopping, dentist appointment is Health). Use General only when nothing else fits.
 
-6. Status (Base this ONLY on `state_expression`):
+6. Status:
+   - Base ONLY on `state_expression`.
    - Pending: default state.
-   - In Progress: if state expression shows work has already started.
-   - Completed: if state expression clearly shows it is already finished.
+   - In Progress: explicit phrase showing work has started ("started studying", "working on").
+   - Completed: explicit phrase showing work is already finished ("already finished", "done").
 """
-
 
 Model_2_Classification_Schema = {
     "type": "json_schema",
@@ -69,37 +70,16 @@ Model_2_Classification_Schema = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "title": {
-                            "type": "string",
-                            "description": "Short, clean, grammatically correct verb phrase.",
-                        },
-                        "description": {
-                            "type": ["string", "null"],
-                            "description": "Useful extra context or precise time details. Null if none.",
-                        },
-                        "priority": {
-                            "type": "string",
-                            "enum": ["Low", "Medium", "High", "Urgent"],
-                            "description": "Priority level based on urgency and consequence.",
-                        },
-                        "deadline": {
-                            "type": ["string", "null"],
-                            "description": "Normalized date in DD-MM-YYYY format, or null.",
-                        },
-                        "category": {
-                            "type": "string",
-                            "enum": ["Work", "Study", "Personal", "Shopping", "Health", "Finance", "General"],
-                            "description": "Task category based on primary purpose.",
-                        },
-                        "status": {
-                            "type": "string",
-                            "enum": ["Pending", "In Progress", "Completed"],
-                            "description": "Current status based on state expression.",
-                        },
+                        "title": {"type": "string", "description": "Concise verb phrase."},
+                        "description": {"type": ["string", "null"], "description": "Extra context or sub-day timing not captured in deadline."},
+                        "priority": {"type": "string", "enum": ["Low", "Medium", "High", "Urgent"]},
+                        "deadline": {"type": ["string", "null"], "description": "DD-MM-YYYY format, or null."},
+                        "category": {"type": "string", "enum": ["Work", "Study", "Personal", "Shopping", "Health", "Finance", "General"]},
+                        "status": {"type": "string", "enum": ["Pending", "In Progress", "Completed"]},
                     },
                     "required": ["title", "description", "priority", "deadline", "category", "status"],
                     "additionalProperties": False,
-                }
+                },
             }
         },
         "required": ["tasks"],
@@ -107,10 +87,41 @@ Model_2_Classification_Schema = {
     },
 }
 
+def handle_ai_error(error: Exception) -> dict:
+    if isinstance(error, RateLimitError):
+        error_type = "rate_limit"
+        ui_message = "Rate limit reached. Please wait a few seconds and try again."
+    elif isinstance(error, AuthenticationError):
+        error_type = "authentication_error"
+        ui_message = "Authentication issue encountered."
+    elif isinstance(error, NotFoundError):
+        error_type = "model_not_found"
+        ui_message = "Model not found."
+    elif isinstance(error, json.JSONDecodeError):
+        error_type = "invalid_json"
+        ui_message = "Invalid JSON produced by model."
+    elif isinstance(error, APIError):
+        error_type = "api_error"
+        ui_message = "API service error."
+    else:
+        error_type = "unknown_error"
+        ui_message = "Unexpected error."
 
+    return {"error": error_type, "message": ui_message, "detail": str(error)}
 
-USER_PROMPT_MODEL_2 = f"""Please normalize and classify the following extracted tasks according to your system instructions:
+def task_classification_specialist(model_1_output: dict):
+    user_prompt = f"""Please normalize and classify the following extracted tasks according to your system instructions:
 
 INPUT DATA:
-{model_1_json_string}
+{json.dumps(model_1_output, indent=2)}
 """
+    try:
+        response = groq_ai.responses.create(
+            model="openai/gpt-oss-20b",
+            instructions=SYSTEM_PROMPT_MODEL_2,
+            input=user_prompt,
+            text={"format": Model_2_Classification_Schema},
+        )
+        return json.loads(response.output_text)
+    except Exception as e:
+        return handle_ai_error(e)
