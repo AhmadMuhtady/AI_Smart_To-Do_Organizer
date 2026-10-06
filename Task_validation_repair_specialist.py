@@ -41,12 +41,8 @@ def resolve_expected_deadline(time_expr: str | None, ref_date: date = today) -> 
             is_next = "next " + name in raw
 
             if target_idx == current_idx:
-                # Same day of the week (e.g., today is Tuesday)
-                # "next Tuesday" -> next week (+7 days)
-                # "Tuesday" / "this Tuesday" -> today (+0 days)
                 days_ahead = 7 if is_next else 0
             else:
-                # Different day of the week
                 nearest_offset = (target_idx - current_idx) % 7
                 days_ahead = nearest_offset + 7 if is_next else nearest_offset
 
@@ -69,16 +65,23 @@ Do NOT rewrite valid fields. Do NOT invent new descriptions. Do NOT add, delete,
    - If candidate `deadline != trusted_deadline`: Emit a repair setting `new_value: trusted_deadline`.
 
 2. Description & Timing Policy:
+   - NO STYLISTIC REWRITING OR SIMPLIFYING (HARD RULE):
+     If the candidate description already faithfully preserves the source information, do NOT rewrite, shorten, normalize, or stylistically improve it.
+     * "sometime next week" -> LEAVE IT ALONE (do NOT simplify to "next week").
+     * "sometime this weekend, if I get the chance" -> LEAVE IT ALONE.
+     * Model 3 only repairs missing or wrong information; it is NOT a copyeditor.
+
    - Specific Sub-Day Timing (MANDATORY TO PRESERVE):
-     Phrases specifying an exact time of day or interval (e.g., "afternoon", "in 15 minutes", "at 3 PM", "right now", "before noon") MUST be preserved in `description`.
-     * Example: "tomorrow afternoon" -> deadline handles tomorrow, but "afternoon" must be in `description`.
-     * Example: "in 15 minutes or receive a penalty" -> both the 15 minutes and penalty must be in `description`.
-   - Vague Scheduling Language (DO NOT PUT IN DESCRIPTION):
-     Vague timing phrases such as "sometime soon", "later this month maybe", "sometime next month", "whenever", or "sometime" DO NOT belong in `description`. If `description` is null for these, THAT IS CORRECT. Do NOT patch vague phrases into `description`.
-   - Standard Calendar Deadlines:
-     Words like "today", "tomorrow", "Friday", or "yesterday" captured by deadline must NOT be in `description`.
-   - Context & Stakes:
-     Genuine consequences, penalties, or stakes ("or they will shut off power in 10 minutes", "for an oil change") MUST be preserved in `description`.
+     Phrases specifying an exact time of day or interval ("afternoon", "in 15 minutes", "at 3 PM", "right now", "before lunch") MUST be preserved in description if missing.
+
+   - Multi-Day / Window Timing Without Concrete Single-Day Deadlines:
+     Phrases that specify an active planning timeframe that cannot be pinned to one exact calendar date (e.g., "this weekend", "next week") MUST be preserved in description if candidate deadline is null and description is empty.
+
+   - Completely Vague or Indefinite Phrases (DO NOT PUT IN DESCRIPTION):
+     Phrases with zero scheduling boundary such as "sometime soon", "later this month maybe", "whenever get a chance", or "sometime" DO NOT belong in description. Leaving description null for these is correct.
+
+   - Calendar Deadlines (DD-MM-YYYY):
+     Single calendar days ("today", "tomorrow", "Friday") captured by deadline must NOT be duplicated in description.
 
 3. Hallucination Removal:
    - Clear any details in `description` or `title` that have zero basis in Model 1 or raw text (set `new_value: null`).
@@ -89,8 +92,15 @@ Do NOT rewrite valid fields. Do NOT invent new descriptions. Do NOT add, delete,
    - Progress evidence ("started", "in progress") -> `status: "In Progress"`.
    - Otherwise -> `status: "Pending"`.
 
-5. Category Guardrail:
-   - Only correct blatant blunders (e.g., studying for an exam marked as "Shopping" instead of "Study").
+5. Priority Audit (Narrow, Rule-Based Only):
+   - Only correct priority when it is an obvious rule violation. Do NOT debate subjective Medium vs. High choices.
+   - Standard work, assignments, or presentations (e.g. "Presentation for Monday meeting" as Medium vs. High): LEAVE ALONE.
+   - Immediate Action + Severe Imminent Consequence within hours or minutes MUST be "Urgent":
+     * "pay electricity bill right now or power will be cut tonight" -> if marked Medium/High, emit repair setting `new_value: "Urgent"`.
+     * "pay parking ticket in 15 minutes or receive penalty" -> must be "Urgent".
+
+6. Category Guardrail:
+   - Only correct blatant blunders (e.g., studying for an exam marked as "Shopping" instead of "Study", barber/grooming marked as "Work").
 """
 
 Model_3_Validation_Schema = {
@@ -207,12 +217,14 @@ def validate_and_repair_tasks(raw_text: str, model_1_output: dict, model_2_outpu
     user_prompt = f"""Audit candidate tasks against source inputs and Python pre-computed trusted deadlines.
 Only flag unambiguous defects:
 - Deadlines that do NOT match trusted_deadline
+- Priority rule violations: immediate action + severe penalty within hours MUST be 'Urgent' (do NOT debate subjective Medium vs High)
 - Missing specific sub-day timing that a date cannot represent (e.g. 'in 15 minutes', 'afternoon')
 - Missing consequences, locations, or penalties
 - Hallucinated details
 - Incorrect status or category
 
-Do NOT add vague timing phrases ('sometime soon', 'later this month maybe', 'sometime next month') into descriptions. Leaving description null for vague items is correct.
+Do NOT rewrite, shorten, or cosmetically edit descriptions that already faithfully capture source details (e.g. 'sometime next week' must remain 'sometime next week').
+Do NOT add completely vague timing phrases ('sometime soon', 'later this month maybe', 'whenever') into descriptions. Leaving description null for those is correct.
 
 INPUT DATA:
 {json.dumps(user_payload, indent=2)}"""
