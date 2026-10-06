@@ -5,14 +5,12 @@ DB_FILE = "tasks.db"
 
 
 def get_connection(db_file: str = DB_FILE) -> sqlite3.Connection:
-    """Creates a connection to SQLite with row-dictionary mapping enabled."""
     conn = sqlite3.connect(db_file)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db(db_file: str = DB_FILE) -> None:
-    """Initializes the database schema if it doesn't already exist."""
     with get_connection(db_file) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -33,11 +31,6 @@ def init_db(db_file: str = DB_FILE) -> None:
 
 
 def insert_tasks(tasks: List[Dict[str, Any]], db_file: str = DB_FILE) -> int:
-    """Bulk inserts a list of validated task dictionaries from the pipeline.
-
-    Returns:
-        The count of rows successfully inserted.
-    """
     if not tasks:
         return 0
 
@@ -56,7 +49,6 @@ def insert_tasks(tasks: List[Dict[str, Any]], db_file: str = DB_FILE) -> int:
 
 
 def get_all_tasks(db_file: str = DB_FILE) -> List[Dict[str, Any]]:
-    """Fetches all tasks ordered by creation date."""
     init_db(db_file)
     with get_connection(db_file) as conn:
         cursor = conn.cursor()
@@ -65,7 +57,6 @@ def get_all_tasks(db_file: str = DB_FILE) -> List[Dict[str, Any]]:
 
 
 def get_tasks_by_status(status: str, db_file: str = DB_FILE) -> List[Dict[str, Any]]:
-    """Fetches tasks filtered by status ('Pending', 'In Progress', 'Completed')."""
     init_db(db_file)
     with get_connection(db_file) as conn:
         cursor = conn.cursor()
