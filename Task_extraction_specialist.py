@@ -20,16 +20,34 @@ You do NOT classify priority, you do NOT assign categories, you do NOT normalize
 2. Split Multiple Tasks:
    - If a single sentence contains multiple distinct actionable tasks, split them and return each as a separate task object.
 
-3. Preserve Original Meaning & Phrasing:
-   - Do not heavily rewrite or formalize the user's words. If they say "Take the car to the mechanic", keep it close to that. Do not invent corporate phrasing like "Schedule automotive maintenance".
+3. Action Verb Belongs in Task Text (Never a Bare Noun):
+   - `task_text` MUST include the core action verb together with its direct object/modifiers (e.g., "work on the slide deck", "finish history essay", "cancel that subscription", "pay electricity bill").
+   - A task cannot be a standalone noun phrase like "the slide deck".
+
+4. State Expression Boundaries:
+   - `state_expression` captures ONLY the auxiliary language expressing intent, modal obligation, progress, or completion (e.g., "need to", "I've started", "should probably", "already finished", "remind me to").
+   - It must NEVER swallow the main action verb (e.g., in "I've started working on the deck", the state is "I've started" and the task is "work on the slide deck"). If no explicit state/progress wording is present, output null.
+
+5. Timing Belongs Exclusively in Time Expression:
+   - ANY phrase describing when or how soon a task should happen—including vague, non-specific, or loose timing (e.g., "later this month maybe", "whenever I get a chance", "sometime soon", "right now", "tomorrow")—MUST go into `time_expression`.
+   - Never leak temporal or scheduling phrases into `context` or `state_expression`.
+
+6. Task Context Boundaries:
+   - `context` is strictly for non-temporal auxiliary facts: purpose, reasons, stakes, locations, or consequences (e.g., "for an oil change", "from the store", "for the client meeting").
+   - Discard throwaway filler words (e.g., "well whatever") or set `context` to null if there are no real extra stakes or reasons.
+
+7. Task Isolation & Completeness:
+   - Context, time, and state must originate ONLY from that specific task.
+   - Never nest an actionable sub-task inside another task's context.
+   - Before finishing, do a completeness check to confirm all actionable items in the prompt are extracted exactly once.
 
 ### Field Definitions:
-- `task_text`: The core action the user needs to do (or did).
-- `context`: Any additional details, reasons, or stakes attached to the task. If none, use `null`.
-- `time_expression`: Extract the EXACT timing phrase the user provided (e.g., "tomorrow", "Friday", "later this month maybe", "in 10 minutes", "yesterday"). Do NOT normalize this into a calendar date. If no time is mentioned, use `null`.
-- `state_expression`: Extract the EXACT phrase indicating progress, intent, or completion (e.g., "already finished", "started working on", "need to", "remind me to"). If none, use `null`.
+- `task_text`: The full actionable core (verb + direct object + essential modifiers).
+- `context`: Auxiliary reasons, purposes, locations, or consequences. Null if none.
+- `time_expression`: The EXACT timing phrase provided (including vague or relative timing). Null if none.
+- `state_expression`: The EXACT phrase indicating intent, progress, or completion status (excluding the action verb). Null if none.
 
-Do not invent missing information. If a detail is missing in the user's text, output `null` for that field."""
+Do not invent missing information. If a detail is missing in the user's text, output null for that field."""
 
 Model_1_Extraction_Schema = {
     "type": "json_schema",
@@ -46,19 +64,19 @@ Model_1_Extraction_Schema = {
                     "properties": {
                         "task_text": {
                             "type": "string",
-                            "description": "The core actionable task, preserving the original meaning without heavy rewriting.",
+                            "description": "The core actionable task, containing the action verb and direct object.",
                         },
                         "context": {
                             "type": ["string", "null"],
-                            "description": "Additional details, stakes, or purpose associated with the task.",
+                            "description": "Auxiliary reasons, stakes, purpose, or consequences. Excludes timing.",
                         },
                         "time_expression": {
                             "type": ["string", "null"],
-                            "description": "The EXACT time phrase used by the user. Do not normalize to dates.",
+                            "description": "The EXACT time phrase (specific or vague). Excludes intent/state.",
                         },
                         "state_expression": {
                             "type": ["string", "null"],
-                            "description": "The EXACT phrase indicating the state or progress.",
+                            "description": "The EXACT auxiliary phrase indicating intent, progress, or completion.",
                         },
                     },
                     "required": ["task_text", "context", "time_expression", "state_expression"],
