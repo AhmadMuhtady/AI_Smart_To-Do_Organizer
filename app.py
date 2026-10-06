@@ -4,28 +4,26 @@ from typing import Tuple, List, Dict, Any
 from pipeline_orchestrator import process_user_text_to_tasks, PipelineExecutionError
 from database import init_db, insert_tasks, get_all_tasks, get_connection
 
-# Initialize SQLite tables on boot
+
 init_db()
 
 
-# ---------------------------------------------------------------------------
-# Database Helpers for the UI
-# ---------------------------------------------------------------------------
+
 def fetch_tasks_dataframe(status_filter: str = "All", category_filter: str = "All") -> pd.DataFrame:
-    """Reads tasks from SQLite and formats them into a polished DataFrame."""
+
     tasks = get_all_tasks()
     if not tasks:
         return pd.DataFrame(columns=["ID", "Title", "Description", "Priority", "Deadline", "Category", "Status", "Created At"])
 
     df = pd.DataFrame(tasks)
     
-    # Apply UI filters
+
     if status_filter != "All":
         df = df[df["status"] == status_filter]
     if category_filter != "All":
         df = df[df["category"] == category_filter]
 
-    # Reorder and format column headers
+
     df = df.rename(columns={
         "id": "ID",
         "title": "Title",
@@ -37,7 +35,7 @@ def fetch_tasks_dataframe(status_filter: str = "All", category_filter: str = "Al
         "created_at": "Created At"
     })
     
-    # Fill empty descriptions and deadlines with clean markers
+
     df["Description"] = df["Description"].fillna("—")
     df["Deadline"] = df["Deadline"].fillna("—")
 
@@ -45,7 +43,7 @@ def fetch_tasks_dataframe(status_filter: str = "All", category_filter: str = "Al
 
 
 def update_task_status_db(task_id: int, new_status: str) -> str:
-    """Updates a task status directly in SQLite."""
+
     if not task_id:
         return "Please enter a valid Task ID."
     try:
@@ -61,7 +59,7 @@ def update_task_status_db(task_id: int, new_status: str) -> str:
 
 
 def delete_task_db(task_id: int) -> str:
-    """Deletes a task from SQLite."""
+
     if not task_id:
         return "Please enter a valid Task ID."
     try:
@@ -76,11 +74,9 @@ def delete_task_db(task_id: int) -> str:
         return f"Error: {e}"
 
 
-# ---------------------------------------------------------------------------
-# Pipeline Execution Callbacks
-# ---------------------------------------------------------------------------
+
 def run_pipeline_ui(raw_text: str) -> Tuple[str, pd.DataFrame, List[Dict[str, Any]], str]:
-    """Runs the 3-model pipeline, previews the items, and holds them in state."""
+
     if not raw_text or not raw_text.strip():
         return (
             "⚠️ Please enter some task notes to process.",
@@ -122,7 +118,7 @@ def run_pipeline_ui(raw_text: str) -> Tuple[str, pd.DataFrame, List[Dict[str, An
 
 
 def commit_tasks_to_db(staged_tasks: List[Dict[str, Any]]) -> Tuple[str, pd.DataFrame]:
-    """Saves the staged candidate tasks into SQLite and refreshes the database view."""
+
     if not staged_tasks:
         return "⚠️ No tasks to save. Run the pipeline first.", fetch_tasks_dataframe()
 
@@ -131,9 +127,7 @@ def commit_tasks_to_db(staged_tasks: List[Dict[str, Any]]) -> Tuple[str, pd.Data
     return f"💾 Successfully committed {inserted_count} tasks to database!", refreshed_df
 
 
-# ---------------------------------------------------------------------------
-# Gradio UI Construction
-# ---------------------------------------------------------------------------
+
 custom_css = """
 .gradio-container {
     max-width: 1250px !important;
@@ -182,9 +176,6 @@ with gr.Blocks(title="AI Smart To-Do Organizer", css=custom_css, theme=gr.themes
         )
 
     with gr.Tabs() as tabs:
-        # ===================================================================
-        # TAB 1: Smart Task Ingestion & AI Pipeline
-        # ===================================================================
         with gr.Tab("📥 Ingest & Process Tasks", id="tab_ingest"):
             with gr.Row():
                 with gr.Column(scale=5):
@@ -217,9 +208,7 @@ with gr.Blocks(title="AI Smart To-Do Organizer", css=custom_css, theme=gr.themes
                     save_db_btn = gr.Button("💾 Commit Tasks to Database", variant="primary", size="lg")
                     save_status_box = gr.Markdown("")
 
-        # ===================================================================
-        # TAB 2: Task Manager & Storage Dashboard
-        # ===================================================================
+
         with gr.Tab("📋 Task Dashboard", id="tab_dashboard"):
             with gr.Row():
                 with gr.Column(scale=4):
@@ -256,10 +245,7 @@ with gr.Blocks(title="AI Smart To-Do Organizer", css=custom_css, theme=gr.themes
 
             action_result_box = gr.Markdown("")
 
-    # =======================================================================
-    # Event Wiring
-    # =======================================================================
-    # Benchmark load
+
     benchmark_text = (
         "Buy milk from the store today.\n"
         "I need to finish my history essay by Friday and also pick up my dry cleaning tomorrow.\n"
@@ -285,27 +271,27 @@ with gr.Blocks(title="AI Smart To-Do Organizer", css=custom_css, theme=gr.themes
     sample_btn.click(lambda: benchmark_text, outputs=[raw_input_box])
     clear_input_btn.click(lambda: "", outputs=[raw_input_box])
 
-    # Run AI pipeline
+
     process_btn.click(
         fn=run_pipeline_ui,
         inputs=[raw_input_box],
         outputs=[pipeline_status_box, preview_dataframe, staged_tasks_state, save_status_box]
     )
 
-    # Commit to DB
+
     save_db_btn.click(
         fn=commit_tasks_to_db,
         inputs=[staged_tasks_state],
         outputs=[save_status_box, dashboard_dataframe]
     )
 
-    # Filter & Refresh Dashboard
+
     filter_inputs = [status_filter, category_filter]
     status_filter.change(fn=fetch_tasks_dataframe, inputs=filter_inputs, outputs=[dashboard_dataframe])
     category_filter.change(fn=fetch_tasks_dataframe, inputs=filter_inputs, outputs=[dashboard_dataframe])
     refresh_btn.click(fn=fetch_tasks_dataframe, inputs=filter_inputs, outputs=[dashboard_dataframe])
 
-    # Task mutations
+
     mark_complete_btn.click(
         fn=lambda tid: update_task_status_db(tid, "Completed"),
         inputs=[task_id_input],
