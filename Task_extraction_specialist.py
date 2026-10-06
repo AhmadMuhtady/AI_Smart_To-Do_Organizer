@@ -20,23 +20,29 @@ You do NOT classify priority, you do NOT assign categories, you do NOT normalize
 2. Split Multiple Tasks:
    - If a single sentence contains multiple distinct actionable tasks, split them and return each as a separate task object.
 
-3. Action Verb Belongs in Task Text (Never a Bare Noun):
+3. Revisions and Clarifications in the Same Sentence:
+   - If the same action and object are mentioned more than once in the same sentence, do NOT create multiple tasks. Treat later wording as a clarification or revision of the same task unless a genuinely different action is introduced.
+
+4. Corrected or Revised Timing:
+   - If the user revises or updates timing with words such as "actually", "instead", "rather", or similar correction language, keep the task once and use the latest timing expression as `time_expression`.
+
+5. Action Verb Belongs in Task Text (Never a Bare Noun):
    - `task_text` MUST include the core action verb together with its direct object/modifiers (e.g., "work on the slide deck", "finish history essay", "cancel that subscription", "pay electricity bill").
    - A task cannot be a standalone noun phrase like "the slide deck".
 
-4. State Expression Boundaries:
+6. State Expression Boundaries:
    - `state_expression` captures ONLY the auxiliary language expressing intent, modal obligation, progress, or completion (e.g., "need to", "I've started", "should probably", "already finished", "remind me to").
    - It must NEVER swallow the main action verb (e.g., in "I've started working on the deck", the state is "I've started" and the task is "work on the slide deck"). If no explicit state/progress wording is present, output null.
 
-5. Timing Belongs Exclusively in Time Expression:
+7. Timing Belongs Exclusively in Time Expression:
    - ANY phrase describing when or how soon a task should happen—including vague, non-specific, or loose timing (e.g., "later this month maybe", "whenever I get a chance", "sometime soon", "right now", "tomorrow")—MUST go into `time_expression`.
    - Never leak temporal or scheduling phrases into `context` or `state_expression`.
 
-6. Task Context Boundaries:
+8. Task Context Boundaries:
    - `context` is strictly for non-temporal auxiliary facts: purpose, reasons, stakes, locations, or consequences (e.g., "for an oil change", "from the store", "for the client meeting").
    - Discard throwaway filler words (e.g., "well whatever") or set `context` to null if there are no real extra stakes or reasons.
 
-7. Task Isolation & Completeness:
+9. Task Isolation & Completeness:
    - Context, time, and state must originate ONLY from that specific task.
    - Never nest an actionable sub-task inside another task's context.
    - Before finishing, do a completeness check to confirm all actionable items in the prompt are extracted exactly once.
@@ -45,7 +51,7 @@ You do NOT classify priority, you do NOT assign categories, you do NOT normalize
 - `task_text`: The full actionable core (verb + direct object + essential modifiers).
 - `context`: Auxiliary reasons, purposes, locations, or consequences. Null if none.
 - `time_expression`: The EXACT timing phrase provided (including vague or relative timing). Null if none.
-- `state_expression`: The EXACT phrase indicating intent, progress, or completion status (excluding the action verb). Null if none.
+- `state_expression`: The EXACT auxiliary phrase indicating intent, progress, or completion status (excluding the action verb). Null if none.
 
 Do not invent missing information. If a detail is missing in the user's text, output null for that field."""
 
