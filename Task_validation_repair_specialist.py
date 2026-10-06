@@ -22,28 +22,33 @@ def resolve_expected_deadline(time_expr: str | None, ref_date: date = today) -> 
 
     raw = time_expr.strip().lower()
 
-    # Vague or historical phrases -> null
+    # 1. Vague or past completed history -> null
     if any(k in raw for k in ["sometime", "later", "whenever", "yesterday", "last week", "past"]):
         return None
 
-    # Immediate or same-day actions
+    # 2. Immediate or same-day expressions
     if "today" in raw or "right now" in raw or "in " in raw:
         return ref_date.strftime("%d-%m-%Y")
 
-    # Next-day actions
+    # 3. Tomorrow
     if "tomorrow" in raw:
         return (ref_date + timedelta(days=1)).strftime("%d-%m-%Y")
 
-    # Calendar weekday calculation
+    # 4. Strict Weekday Calculation
     for name, target_idx in WEEKDAYS.items():
         if name in raw:
             current_idx = ref_date.weekday()
-            days_ahead = (target_idx - current_idx) % 7
-            if days_ahead == 0:
-                days_ahead = 7
+            is_next = "next " + name in raw
 
-            if "next " + name in raw:
-                days_ahead += 7
+            if target_idx == current_idx:
+                # Same day of the week (e.g., today is Tuesday)
+                # "next Tuesday" -> next week (+7 days)
+                # "Tuesday" / "this Tuesday" -> today (+0 days)
+                days_ahead = 7 if is_next else 0
+            else:
+                # Different day of the week
+                nearest_offset = (target_idx - current_idx) % 7
+                days_ahead = nearest_offset + 7 if is_next else nearest_offset
 
             return (ref_date + timedelta(days=days_ahead)).strftime("%d-%m-%Y")
 
