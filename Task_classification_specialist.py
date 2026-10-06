@@ -110,25 +110,39 @@ def handle_ai_error(error: Exception) -> dict:
     return {"error": error_type, "message": ui_message, "detail": str(error)}
 
 def task_classification_specialist(model_1_output: dict) -> dict:
-    # Guard against empty/errored Model 1 output
     if not model_1_output or "tasks" not in model_1_output:
         return {"error": "invalid_input", "message": "Model 1 did not return valid task data."}
 
     user_prompt = f"""Normalize and classify these extracted tasks. 
-Return ONLY the raw JSON adhering strictly to the schema. Do not write markdown blocks or preamble.
+Output ONLY valid JSON matching this schema:
+{{
+  "tasks": [
+    {{
+      "title": "string",
+      "description": "string or null",
+      "priority": "Low | Medium | High | Urgent",
+      "deadline": "DD-MM-YYYY or null",
+      "category": "Work | Study | Personal | Shopping | Health | Finance | General",
+      "status": "Pending | In Progress | Completed"
+    }}
+  ]
+}}
 
 INPUT DATA:
 {json.dumps(model_1_output, indent=2)}
 """
+
     try:
-        response = groq_ai.responses.create(
+        response = groq_ai.chat.completions.create(
             model="openai/gpt-oss-20b",
-            instructions=SYSTEM_PROMPT_MODEL_2,
-            input=user_prompt,
-            text={"format": Model_2_Classification_Schema},
-            max_tokens=4096,  # <-- Prevents empty or truncated generations
-            temperature=0.1   # <-- Lower temperature prevents schema drift
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_MODEL_2},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=4096
         )
-        return json.loads(response.output_text)
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         return handle_ai_error(e)
