@@ -21,7 +21,6 @@ if not logger.handlers:
 
 
 class PipelineExecutionError(Exception):
-    """Raised when an unrecoverable failure occurs inside the pipeline."""
     pass
 
 
@@ -33,7 +32,6 @@ def _execute_with_retry(
     stage_name: str = "Stage",
     **kwargs,
 ) -> Dict[str, Any]:
-    """Executes a specialist stage with exponential backoff for transient API faults."""
     delay = initial_delay
     last_error: Optional[str] = None
 
@@ -123,7 +121,7 @@ def process_user_text_to_tasks(
         )
         classified_tasks = m2_payload.get("tasks", [])
 
-        # Programmatic Cardinality Invariant Check
+
         if len(classified_tasks) == total_extracted:
             logger.info(
                 f"Model 2 cardinality verified: {len(classified_tasks)}/{total_extracted} tasks."
@@ -163,7 +161,7 @@ def process_user_text_to_tasks(
         f"Model 3 audit completed: passed={passed}, issues_found={issues_found}, corrections={len(corrections)}"
     )
 
-    # --- Stage 4: Deterministic Runtime Patch Application ---
+
     repaired_payload = apply_validation_patches(m2_payload, audit_report)
     final_tasks = repaired_payload.get("tasks", [])
 
