@@ -132,12 +132,23 @@ TEXT START
 {clean_text}
 TEXT END"""
     try:
-        response = groq_ai.responses.create(
-            model="qwen/qwen3.8-27b",
-            instructions=SYSTEM_PROMPT_MODEL_1,
-            input=user_prompt,
-            text={"format": Model_1_Extraction_Schema},
+        response = groq_ai.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_MODEL_1},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "Task_Extraction",
+                    "strict": True,
+                    "schema": Model_1_Extraction_Schema["schema"]
+                }
+            },
+            temperature=0.0,
+            max_tokens=4096
         )
-        return json.loads(response.output_text)
+        return json.loads(response.choices[0].message.content)
     except Exception as e:
         return handle_ai_error(e)
