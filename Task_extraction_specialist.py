@@ -20,38 +20,46 @@ You do NOT classify priority, you do NOT assign categories, you do NOT normalize
 2. Split Multiple Tasks:
    - If a single sentence contains multiple distinct actionable tasks, split them and return each as a separate task object.
 
-3. Revisions and Clarifications in the Same Sentence:
-   - If the same action and object are mentioned more than once in the same sentence, do NOT create multiple tasks. Treat later wording as a clarification or revision of the same task unless a genuinely different action is introduced.
+3. Revisions in the Same Sentence (Single Task Only):
+   - When a later clause refers back to the same action/object and corrects or updates timing (e.g., "actually", "do it later this month maybe"), do NOT create a second task.
+   - Update the existing task with the revised timing instead of creating an additional object.
 
-4. Corrected or Revised Timing:
-   - If the user revises or updates timing with words such as "actually", "instead", "rather", or similar correction language, keep the task once and use the latest timing expression as `time_expression`.
+4. Action Verb Belongs Exclusively in Task Text (Never a Bare Noun):
+   - `task_text` MUST ALWAYS contain the actionable verb and its direct object/modifiers.
+   - NEVER drop the action verb to leave a bare noun phrase.
+     * BAD: `task_text`: "an important client report"
+     * GOOD: `task_text`: "finish an important client report"
+     * BAD: `task_text`: "the slide deck"
+     * GOOD: `task_text`: "work on the slide deck"
 
-5. Action Verb Belongs in Task Text (Never a Bare Noun):
-   - `task_text` MUST include the core action verb together with its direct object/modifiers (e.g., "work on the slide deck", "finish history essay", "cancel that subscription", "pay electricity bill").
-   - A task cannot be a standalone noun phrase like "the slide deck".
+5. State Expression Boundary (Auxiliary Words Only):
+   - `state_expression` MUST contain ONLY auxiliary words that convey intent, reminders, progress, or completion.
+   - It must NEVER consume or duplicate the primary action verb.
+     * "remind me to cancel that subscription" -> `state_expression`: "remind me to", `task_text`: "cancel that subscription"
+     * "Already finished an important client report" -> `state_expression`: "Already finished", `task_text`: "finish an important client report"
+     * "I've started working on the slide deck" -> `state_expression`: "started", `task_text`: "work on the slide deck"
+     * If no auxiliary intent/status words exist, `state_expression` must be null.
 
-6. State Expression Boundaries:
-   - `state_expression` captures ONLY the auxiliary language expressing intent, modal obligation, progress, or completion (e.g., "need to", "I've started", "should probably", "already finished", "remind me to").
-   - It must NEVER swallow the main action verb (e.g., in "I've started working on the deck", the state is "I've started" and the task is "work on the slide deck"). If no explicit state/progress wording is present, output null.
+6. Timing Boundary (Past, Present, Future, and Vague):
+   - `time_expression` captures ANY phrase indicating WHEN an action was performed, is performed, or should be performed.
+   - Past timing phrases (e.g., "yesterday", "last week") belong strictly in `time_expression`, NEVER in `context`.
+     * "I already finished filing my taxes yesterday" -> `task_text`: "file my taxes", `state_expression`: "already finished", `time_expression`: "yesterday", `context`: null.
+   - Action timing must not include negative consequences or penalties (e.g., "in 10 minutes" inside "or power cuts in 10 minutes" is a consequence and stays in context).
 
-7. Timing Belongs Exclusively in Time Expression:
-   - ANY phrase describing when or how soon a task should happen—including vague, non-specific, or loose timing (e.g., "later this month maybe", "whenever I get a chance", "sometime soon", "right now", "tomorrow")—MUST go into `time_expression`.
-   - Never leak temporal or scheduling phrases into `context` or `state_expression`.
+7. Context Boundary (No Self-Duplication):
+   - `context` is strictly for auxiliary reasons, locations, purposes, or consequences (e.g., "for an oil change", "from the store", "or they will shut off power in 10 minutes").
+   - NEVER duplicate the task or parts of the task inside `context`. If there are no genuinely extra stakes or details, `context` must be null.
 
-8. Task Context Boundaries:
-   - `context` is strictly for non-temporal auxiliary facts: purpose, reasons, stakes, locations, or consequences (e.g., "for an oil change", "from the store", "for the client meeting").
-   - Discard throwaway filler words (e.g., "well whatever") or set `context` to null if there are no real extra stakes or reasons.
-
-9. Task Isolation & Completeness:
+8. Task Isolation & Completeness:
    - Context, time, and state must originate ONLY from that specific task.
    - Never nest an actionable sub-task inside another task's context.
    - Before finishing, do a completeness check to confirm all actionable items in the prompt are extracted exactly once.
 
 ### Field Definitions:
-- `task_text`: The full actionable core (verb + direct object + essential modifiers).
-- `context`: Auxiliary reasons, purposes, locations, or consequences. Null if none.
-- `time_expression`: The EXACT timing phrase provided (including vague or relative timing). Null if none.
-- `state_expression`: The EXACT auxiliary phrase indicating intent, progress, or completion status (excluding the action verb). Null if none.
+- `task_text`: The full actionable core (verb + direct object + modifiers). Never a bare noun.
+- `context`: Auxiliary reasons, purposes, locations, consequences, or penalties. Never duplicates task_text or timing. Null if none.
+- `time_expression`: The EXACT timing phrase (past, relative, specific, or vague) for when the task happened or should happen. Null if none.
+- `state_expression`: The EXACT auxiliary phrase indicating intent, reminders, progress, or completion. Excludes the action verb. Null if none.
 
 Do not invent missing information. If a detail is missing in the user's text, output null for that field."""
 
@@ -74,11 +82,11 @@ Model_1_Extraction_Schema = {
                         },
                         "context": {
                             "type": ["string", "null"],
-                            "description": "Auxiliary reasons, stakes, purpose, or consequences. Excludes timing.",
+                            "description": "Auxiliary reasons, stakes, purpose, consequences, or penalties. Excludes action timing.",
                         },
                         "time_expression": {
                             "type": ["string", "null"],
-                            "description": "The EXACT time phrase (specific or vague). Excludes intent/state.",
+                            "description": "The EXACT time phrase for when the task occurred or should occur.",
                         },
                         "state_expression": {
                             "type": ["string", "null"],
